@@ -4,9 +4,11 @@ import "core:bytes"
 import "core:encoding/endian"
 import "core:encoding/json"
 import "core:fmt"
+import "core:net"
 import "core:os"
 import "core:slice"
 import "core:strconv"
+import "core:strings"
 
 DM_FLAG: u8 : 0b1000_0000
 RECV_FLAG: u8 : 0b1000_0000
@@ -23,12 +25,24 @@ Data :: struct {
 }
 
 Message :: struct {
-	id:      string,
-	content: string,
-	author:  struct {
+	id:          string,
+	content:     string,
+	author:      struct {
 		id: string,
 	},
-	pinned:  bool `json:"isPinned"`,
+	pinned:      bool `json:"isPinned"`,
+	attachments: []struct {
+		url: string,
+	},
+}
+
+SmartAttachment :: struct {
+	channel_id: string,
+	id:         string,
+	name:       string,
+	expire:     string,
+	issue:      string,
+	signature:  string,
 }
 
 main :: proc() {
@@ -104,9 +118,41 @@ main :: proc() {
 			msg_flags |= PINNED_FLAG
 		}
 
+		basic_att: [dynamic]string
+		smart_att: [dynamic]SmartAttachment
+		for att in msg.attachments {
+			_, host, path, queries, _ := net.split_url(att.url)
+			if host == "cdn.discordapp.com" && strings.has_prefix(path, "/attachments/") {
+				// smart
+				split_path := strings.split(path, "/")
+				ch_id := split_path[2]
+				id := split_path[3]
+				name := split_path[4]
+				exp := queries["ex"]
+				iss := queries["is"]
+				sign := queries["hm"]
+				append(&smart_att, SmartAttachment{ch_id, id, name, exp, iss, sign})
+			} else {
+				// basic
+				append(&basic_att, att.url)
+			}
+		}
+		write_u8(buffer, u8(len(basic_att)))
+		for url in basic_att {
+			write_str(buffer, url)
+		}
+		write_u8(buffer, u8(len(smart_att)))
+		for att in smart_att {
+			write_u64_str(buffer, att.channel_id)
+			write_u64_str(buffer, att.id)
+			write_str(buffer, att.name)
+			write_u32_hex(buffer, att.expire)
+			write_u32_hex(buffer, att.issue)
+			write_u64_hex(buffer, att.signature)
+		}
+
 		write_u8(buffer, msg_flags)
-		write_u16(buffer, u16(len(msg.content)))
-		bytes.buffer_write(buffer, transmute([]u8)msg.content)
+		write_str(buffer, msg.content)
 	}
 
 	fok := os.write_entire_file(os.args[2], bytes.buffer_to_bytes(buffer))
@@ -127,6 +173,22 @@ write_u64_str :: proc(buffer: ^bytes.Buffer, str: string) {
 	write_u64(buffer, ch_id)
 }
 
+write_u64_hex :: proc(buffer: ^bytes.Buffer, str: string) {
+	ch_id, _ := strconv.parse_u64(str, 16)
+	write_u64(buffer, ch_id)
+}
+
+write_u32_hex :: proc(buffer: ^bytes.Buffer, str: string) {
+	ch_id, _ := strconv.parse_u64(str, 16)
+	write_u32(buffer, u32(ch_id))
+}
+
+write_u32 :: proc(buffer: ^bytes.Buffer, v: u32) {
+	t32: [size_of(u32)]byte
+	endian.put_u32(t32[:], .Big, v)
+	bytes.buffer_write(buffer, t32[:])
+}
+
 write_u16 :: proc(buffer: ^bytes.Buffer, v: u16) {
 	t16: [size_of(u16)]byte
 	endian.put_u16(t16[:], .Big, v)
@@ -135,4 +197,9 @@ write_u16 :: proc(buffer: ^bytes.Buffer, v: u16) {
 
 write_u8 :: proc(buffer: ^bytes.Buffer, v: u8) {
 	bytes.buffer_write(buffer, []u8{v})
+}
+
+write_str :: proc(buffer: ^bytes.Buffer, str: string) {
+	write_u16(buffer, u16(len(str)))
+	bytes.buffer_write(buffer, transmute([]u8)str)
 }
