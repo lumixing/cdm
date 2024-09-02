@@ -46,11 +46,13 @@ SmartAttachment :: struct {
 }
 
 main :: proc() {
+	fmt.println("reading input data...")
 	data, ok := os.read_entire_file(os.args[1])
 	if !ok {
 		panic("could not read input file")
 	}
 
+	fmt.println("unmarshaling input data...")
 	file: Data
 	json.unmarshal(data, &file)
 	buffer := new(bytes.Buffer)
@@ -65,6 +67,7 @@ main :: proc() {
 	write_u8(buffer, flags)
 	write_u64_str(buffer, file.channel.id)
 
+	fmt.println("getting user ids")
 	if flags & DM_FLAG != 0 {
 		recv := file.messages[0].author.id
 		send: string
@@ -99,6 +102,7 @@ main :: proc() {
 
 	write_u16(buffer, u16(len(file.messages)))
 
+	fmt.println("getting messages...")
 	for msg in file.messages {
 		write_u64_str(buffer, msg.id)
 
