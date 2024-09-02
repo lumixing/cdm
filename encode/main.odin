@@ -5,6 +5,7 @@ import "core:encoding/endian"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strconv"
 
 DM_FLAG: u8 : 0b1000_0000
@@ -31,7 +32,7 @@ Message :: struct {
 }
 
 main :: proc() {
-	data, ok := os.read_entire_file("samples/getimis.json")
+	data, ok := os.read_entire_file(os.args[1])
 	if !ok {
 		panic("could not read input file")
 	}
@@ -40,6 +41,7 @@ main :: proc() {
 	json.unmarshal(data, &file)
 	buffer := new(bytes.Buffer)
 
+	user_ids: []string
 	flags: u8
 
 	if file.guild.id == "0" {
@@ -64,6 +66,21 @@ main :: proc() {
 
 		write_u64_str(buffer, recv)
 		write_u64_str(buffer, send)
+	} else {
+		write_u64_str(buffer, file.guild.id)
+
+		dyn_user_ids: [dynamic]string
+		for msg in file.messages {
+			if !slice.contains(dyn_user_ids[:], msg.author.id) {
+				append(&dyn_user_ids, msg.author.id)
+			}
+		}
+
+		write_u16(buffer, u16(len(dyn_user_ids)))
+		for id in dyn_user_ids {
+			write_u64_str(buffer, id)
+		}
+		user_ids = dyn_user_ids[:]
 	}
 
 	write_u16(buffer, u16(len(file.messages)))
@@ -76,6 +93,12 @@ main :: proc() {
 			if msg.author.id == file.messages[0].author.id {
 				msg_flags |= RECV_FLAG
 			}
+		} else {
+			user_id_index, ok := slice.linear_search(user_ids, msg.author.id)
+			if !ok {
+				panic("could not find user id index! (should not happend!!!)")
+			}
+			write_u16(buffer, u16(user_id_index))
 		}
 		if msg.pinned {
 			msg_flags |= PINNED_FLAG
@@ -86,7 +109,7 @@ main :: proc() {
 		bytes.buffer_write(buffer, transmute([]u8)msg.content)
 	}
 
-	fok := os.write_entire_file("out/out.cdm", bytes.buffer_to_bytes(buffer))
+	fok := os.write_entire_file(os.args[2], bytes.buffer_to_bytes(buffer))
 	if !fok {
 		panic("could not write output data")
 	}
