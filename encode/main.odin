@@ -152,7 +152,10 @@ main :: proc() {
 			write_str(buffer, att.name)
 			write_u32_hex(buffer, att.expire)
 			write_u32_hex(buffer, att.issue)
-			write_u64_hex(buffer, att.signature)
+			write_u64_hex(buffer, att.signature[:16])
+			write_u64_hex(buffer, att.signature[16:32])
+			write_u64_hex(buffer, att.signature[32:48])
+			write_u64_hex(buffer, att.signature[48:])
 		}
 
 		write_u8(buffer, msg_flags)
