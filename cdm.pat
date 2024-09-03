@@ -17,7 +17,7 @@ struct SmartAttachment {
     char name[name_length];
     u32 expire;
     u32 issue;
-    u64 signature;
+    u64 signature[4];
 };
 
 struct Message {
