@@ -112,7 +112,7 @@ main :: proc() {
 		user_ids = dyn_user_ids[:]
 	}
 
-	write_u16(buffer, u16(len(file.messages)))
+	write_u32(buffer, u32(len(file.messages)))
 
 	fmt.println("getting messages...")
 	for msg in file.messages {

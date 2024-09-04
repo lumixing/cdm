@@ -75,7 +75,7 @@ cdm_parse :: proc(data: []byte) -> CDM_File {
 	cdm.user_ids = user_ids[:]
 
 	messages: [dynamic]Message
-	messages_len := get_u16(data, &current)
+	messages_len := get_u32(data, &current)
 	for _ in 0 ..< messages_len {
 		message: Message
 		message.id = Snowflake(get_u64(data, &current))

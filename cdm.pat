@@ -65,8 +65,7 @@ struct File {
 		Array<User, u16> users;
 	}
 	
-	u16 message_count;
-	Message messages[message_count];
+	Array<Message, u32> messages;
 };
 
 File file @ 0;
