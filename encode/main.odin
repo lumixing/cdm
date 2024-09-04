@@ -11,6 +11,8 @@ import "core:strconv"
 import "core:strings"
 
 DM_FLAG: u8 : 0b1000_0000
+USERNAMES_FLAG: u8 : 0b0100_0000
+
 RECV_FLAG: u8 : 0b1000_0000
 PINNED_FLAG: u8 : 0b0100_0000
 
@@ -28,7 +30,8 @@ Message :: struct {
 	id:          string,
 	content:     string,
 	author:      struct {
-		id: string,
+		id:   string,
+		name: string,
 	},
 	pinned:      bool `json:"isPinned"`,
 	attachments: []struct {
@@ -57,11 +60,16 @@ main :: proc() {
 	json.unmarshal(data, &file)
 	buffer := new(bytes.Buffer)
 
+	keep_usernames := true
+
 	user_ids: []string
 	flags: u8
 
 	if file.guild.id == "0" {
 		flags |= DM_FLAG
+	}
+	if keep_usernames {
+		flags |= USERNAMES_FLAG
 	}
 
 	write_u8(buffer, flags)
@@ -70,33 +78,37 @@ main :: proc() {
 	fmt.println("getting user ids")
 	if flags & DM_FLAG != 0 {
 		recv := file.messages[0].author.id
-		send: string
+		write_u64_str(buffer, recv)
+		if flags & USERNAMES_FLAG != 0 {
+			write_str(buffer, file.messages[0].author.name)
+		}
+
 		for msg in file.messages {
 			if msg.author.id != recv {
-				send = msg.author.id
+				write_u64_str(buffer, msg.author.id)
+				if flags & USERNAMES_FLAG != 0 {
+					write_str(buffer, msg.author.name)
+				}
 				break
 			}
 		}
-		if send == "" {
-			panic("could not find sender id!")
-		}
-
-		write_u64_str(buffer, recv)
-		write_u64_str(buffer, send)
 	} else {
 		write_u64_str(buffer, file.guild.id)
 
 		dyn_user_ids: [dynamic]string
+		addr := bytes.buffer_length(buffer)
+
 		for msg in file.messages {
 			if !slice.contains(dyn_user_ids[:], msg.author.id) {
 				append(&dyn_user_ids, msg.author.id)
+				write_u64_str(buffer, msg.author.id)
+				if flags & USERNAMES_FLAG != 0 {
+					write_str(buffer, msg.author.name)
+				}
 			}
 		}
 
-		write_u16(buffer, u16(len(dyn_user_ids)))
-		for id in dyn_user_ids {
-			write_u64_str(buffer, id)
-		}
+		write_u16(buffer, u16(len(dyn_user_ids)), addr)
 		user_ids = dyn_user_ids[:]
 	}
 
@@ -138,6 +150,7 @@ main :: proc() {
 				append(&smart_att, SmartAttachment{ch_id, id, name, exp, iss, sign})
 			} else {
 				// basic
+				fmt.println("basic att!")
 				append(&basic_att, att.url)
 			}
 		}
@@ -196,10 +209,15 @@ write_u32 :: proc(buffer: ^bytes.Buffer, v: u32) {
 	bytes.buffer_write(buffer, t32[:])
 }
 
-write_u16 :: proc(buffer: ^bytes.Buffer, v: u16) {
+write_u16 :: proc(buffer: ^bytes.Buffer, v: u16, addr: Maybe(int) = nil) {
 	t16: [size_of(u16)]byte
 	endian.put_u16(t16[:], .Big, v)
-	bytes.buffer_write(buffer, t16[:])
+
+	if addr, ok := addr.?; ok {
+		inject_at(&buffer.buf, addr, ..t16[:])
+	} else {
+		bytes.buffer_write(buffer, t16[:])
+	}
 }
 
 write_u8 :: proc(buffer: ^bytes.Buffer, v: u8) {
