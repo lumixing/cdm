@@ -28,12 +28,12 @@ struct SmartAttachment {
 
 struct Message {
 	u64 id;
-
+	
+	MessageFlags flags;
+	
 	if (!file_flags.dms) {
 		u16 user_id_index;
 	}
-	
-	MessageFlags flags;
 	
 	Array<String, u8> basic_attachments;
 	Array<SmartAttachment, u8> smart_attachments;

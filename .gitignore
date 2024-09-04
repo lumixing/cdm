@@ -3,3 +3,4 @@ ols.json
 *.old
 samples/
 out/
+*/main.odin

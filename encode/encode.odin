@@ -62,7 +62,7 @@ main :: proc() {
 	json.unmarshal(data, &file)
 	buffer := new(bytes.Buffer)
 
-	flags := FileFlags{.Usernames}
+	flags := FileFlags{.IgnoreQueries}
 
 	user_ids: []string
 
