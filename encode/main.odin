@@ -10,9 +10,22 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 
-DM_FLAG: u8 : 0b1000_0000
-USERNAMES_FLAG: u8 : 0b0100_0000
-IGNORE_ATT_QUERIES_FLAG: u8 : 0b0010_0000
+ENDIAN: endian.Byte_Order : .Little
+
+FileFlag :: enum {
+	Usernames,
+	IgnoreQueries,
+	// internal
+	DirectMessage,
+}
+FileFlags :: bit_set[FileFlag]
+
+MessageFlag :: enum {
+	// internal
+	Receiver,
+	Pinned,
+}
+MessageFlags :: bit_set[MessageFlag]
 
 RECV_FLAG: u8 : 0b1000_0000
 PINNED_FLAG: u8 : 0b0100_0000
@@ -61,37 +74,29 @@ main :: proc() {
 	json.unmarshal(data, &file)
 	buffer := new(bytes.Buffer)
 
-	keep_usernames := true
-	ignore_att := true
+	flags := FileFlags{.IgnoreQueries, .Usernames}
 
 	user_ids: []string
-	flags: u8
 
 	if file.guild.id == "0" {
-		flags |= DM_FLAG
-	}
-	if keep_usernames {
-		flags |= USERNAMES_FLAG
-	}
-	if ignore_att {
-		flags |= IGNORE_ATT_QUERIES_FLAG
+		flags += {.DirectMessage}
 	}
 
-	write_u8(buffer, flags)
+	write_u8(buffer, transmute(u8)flags)
 	write_u64_str(buffer, file.channel.id)
 
 	fmt.println("getting user ids")
-	if flags & DM_FLAG != 0 {
+	if .DirectMessage in flags {
 		recv := file.messages[0].author.id
 		write_u64_str(buffer, recv)
-		if flags & USERNAMES_FLAG != 0 {
+		if .Usernames in flags {
 			write_str(buffer, file.messages[0].author.name)
 		}
 
 		for msg in file.messages {
 			if msg.author.id != recv {
 				write_u64_str(buffer, msg.author.id)
-				if flags & USERNAMES_FLAG != 0 {
+				if .Usernames in flags {
 					write_str(buffer, msg.author.name)
 				}
 				break
@@ -107,7 +112,7 @@ main :: proc() {
 			if !slice.contains(dyn_user_ids[:], msg.author.id) {
 				append(&dyn_user_ids, msg.author.id)
 				write_u64_str(buffer, msg.author.id)
-				if flags & USERNAMES_FLAG != 0 {
+				if .Usernames in flags {
 					write_str(buffer, msg.author.name)
 				}
 			}
@@ -123,10 +128,10 @@ main :: proc() {
 	for msg in file.messages {
 		write_u64_str(buffer, msg.id)
 
-		msg_flags: u8
-		if flags & DM_FLAG != 0 {
+		msg_flags: MessageFlags
+		if .DirectMessage in flags {
 			if msg.author.id == file.messages[0].author.id {
-				msg_flags |= RECV_FLAG
+				msg_flags += {.Receiver}
 			}
 		} else {
 			user_id_index, ok := slice.linear_search(user_ids, msg.author.id)
@@ -136,7 +141,7 @@ main :: proc() {
 			write_u16(buffer, u16(user_id_index))
 		}
 		if msg.pinned {
-			msg_flags |= PINNED_FLAG
+			msg_flags += {.Pinned}
 		}
 
 		addr := bytes.buffer_length(buffer)
@@ -151,7 +156,7 @@ main :: proc() {
 				write_u64_str(buffer, split_path[2])
 				write_u64_str(buffer, split_path[3])
 				write_str(buffer, split_path[4])
-				if !ignore_att {
+				if .IgnoreQueries not_in flags {
 					write_u32_hex(buffer, queries["ex"])
 					write_u32_hex(buffer, queries["is"])
 					write_u64_hex(buffer, sign[:16])
@@ -170,7 +175,7 @@ main :: proc() {
 		write_u8(buffer, u8(smart_att), addr)
 		write_u8(buffer, u8(basic_att), addr)
 
-		write_u8(buffer, msg_flags)
+		write_u8(buffer, transmute(u8)msg_flags)
 		write_str(buffer, msg.content)
 	}
 
@@ -183,7 +188,7 @@ main :: proc() {
 
 write_u64 :: proc(buffer: ^bytes.Buffer, v: u64) {
 	t64: [size_of(u64)]byte
-	endian.put_u64(t64[:], .Big, v)
+	endian.put_u64(t64[:], ENDIAN, v)
 	bytes.buffer_write(buffer, t64[:])
 }
 
@@ -204,13 +209,13 @@ write_u32_hex :: proc(buffer: ^bytes.Buffer, str: string) {
 
 write_u32 :: proc(buffer: ^bytes.Buffer, v: u32) {
 	t32: [size_of(u32)]byte
-	endian.put_u32(t32[:], .Big, v)
+	endian.put_u32(t32[:], ENDIAN, v)
 	bytes.buffer_write(buffer, t32[:])
 }
 
 write_u16 :: proc(buffer: ^bytes.Buffer, v: u16, addr: Maybe(int) = nil) {
 	t16: [size_of(u16)]byte
-	endian.put_u16(t16[:], .Big, v)
+	endian.put_u16(t16[:], ENDIAN, v)
 
 	if addr, ok := addr.?; ok {
 		inject_at(&buffer.buf, addr, ..t16[:])

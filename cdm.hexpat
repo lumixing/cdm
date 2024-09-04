@@ -1,4 +1,4 @@
-#pragma endian big
+#pragma endian little
 
 struct Array<T, L> {
 	L length;
@@ -10,8 +10,8 @@ struct String {
 };
 
 bitfield MessageFlags {
-	recv: 1;
-	pinned: 1;
+	bool recv: 1;
+	bool pinned: 1;
 };
 
 struct SmartAttachment {
@@ -19,7 +19,7 @@ struct SmartAttachment {
 	u64 id;
 	String name;
 	
-	if (file_flags.ignore_att_queries == 0) {
+	if (!file_flags.ignore_att_queries) {
 		u32 expire;
 		u32 issue;
 		u64 signature[4];
@@ -29,7 +29,7 @@ struct SmartAttachment {
 struct Message {
 	u64 id;
 
-	if (file_flags.dms == 0) {
+	if (!file_flags.dms) {
 		u16 user_id_index;
 	}
 	
@@ -41,9 +41,9 @@ struct Message {
 };
 
 bitfield FileFlags {
-	dms: 1;
-	usernames: 1;
-	ignore_att_queries: 1;
+	bool dms: 1;
+	bool usernames: 1;
+	bool ignore_att_queries: 1;
 };
 
 FileFlags file_flags;
@@ -51,7 +51,7 @@ FileFlags file_flags;
 struct User {
 	u64 id;
 	
-	if (file_flags.usernames == 1) {
+	if (file_flags.usernames) {
 		String username;
 	}
 };
@@ -62,7 +62,8 @@ struct File {
 	
 	u64 channel_id;
 	
-	if (flags.dms == 1) {
+	
+	if (flags.dms) {
 		User user_ids[2];
 	} else {
 		u64 guild_id;
@@ -70,6 +71,7 @@ struct File {
 	}
 	
 	Array<Message, u32> messages;
+	
 };
 
 File file @ 0;
