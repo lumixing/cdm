@@ -27,9 +27,6 @@ MessageFlag :: enum {
 }
 MessageFlags :: bit_set[MessageFlag]
 
-RECV_FLAG: u8 : 0b1000_0000
-PINNED_FLAG: u8 : 0b0100_0000
-
 Data :: struct {
 	guild:    struct {
 		id: string,
@@ -53,15 +50,6 @@ Message :: struct {
 	},
 }
 
-SmartAttachment :: struct {
-	channel_id: string,
-	id:         string,
-	name:       string,
-	expire:     string,
-	issue:      string,
-	signature:  string,
-}
-
 main :: proc() {
 	fmt.println("reading input data...")
 	data, ok := os.read_entire_file(os.args[1])
@@ -74,7 +62,7 @@ main :: proc() {
 	json.unmarshal(data, &file)
 	buffer := new(bytes.Buffer)
 
-	flags := FileFlags{.IgnoreQueries, .Usernames}
+	flags := FileFlags{.Usernames}
 
 	user_ids: []string
 
@@ -127,6 +115,7 @@ main :: proc() {
 	fmt.println("getting messages...")
 	for msg in file.messages {
 		write_u64_str(buffer, msg.id)
+		addr := bytes.buffer_length(buffer)
 
 		msg_flags: MessageFlags
 		if .DirectMessage in flags {
@@ -144,7 +133,9 @@ main :: proc() {
 			msg_flags += {.Pinned}
 		}
 
-		addr := bytes.buffer_length(buffer)
+		write_u8(buffer, transmute(u8)msg_flags, addr)
+
+		addr = bytes.buffer_length(buffer)
 		basic_att: int
 		smart_att: int
 		for att in msg.attachments {
@@ -175,7 +166,6 @@ main :: proc() {
 		write_u8(buffer, u8(smart_att), addr)
 		write_u8(buffer, u8(basic_att), addr)
 
-		write_u8(buffer, transmute(u8)msg_flags)
 		write_str(buffer, msg.content)
 	}
 

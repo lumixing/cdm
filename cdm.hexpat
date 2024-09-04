@@ -33,17 +33,18 @@ struct Message {
 		u16 user_id_index;
 	}
 	
+	MessageFlags flags;
+	
 	Array<String, u8> basic_attachments;
 	Array<SmartAttachment, u8> smart_attachments;
 	
-	MessageFlags flags;
 	String content;
 };
 
 bitfield FileFlags {
-	bool dms: 1;
 	bool usernames: 1;
 	bool ignore_att_queries: 1;
+	bool dms: 1;
 };
 
 FileFlags file_flags;
