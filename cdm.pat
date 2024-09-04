@@ -18,9 +18,12 @@ struct SmartAttachment {
 	u64 channel_id;
 	u64 id;
 	String name;
-	u32 expire;
-	u32 issue;
-	u64 signature[4];
+	
+	if (file_flags.ignore_att_queries == 0) {
+		u32 expire;
+		u32 issue;
+		u64 signature[4];
+	}
 };
 
 struct Message {
@@ -40,6 +43,7 @@ struct Message {
 bitfield FileFlags {
 	dms: 1;
 	usernames: 1;
+	ignore_att_queries: 1;
 };
 
 FileFlags file_flags;

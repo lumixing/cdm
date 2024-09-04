@@ -12,6 +12,7 @@ import "core:strings"
 
 DM_FLAG: u8 : 0b1000_0000
 USERNAMES_FLAG: u8 : 0b0100_0000
+IGNORE_ATT_QUERIES_FLAG: u8 : 0b0010_0000
 
 RECV_FLAG: u8 : 0b1000_0000
 PINNED_FLAG: u8 : 0b0100_0000
@@ -61,6 +62,7 @@ main :: proc() {
 	buffer := new(bytes.Buffer)
 
 	keep_usernames := true
+	ignore_att := true
 
 	user_ids: []string
 	flags: u8
@@ -70,6 +72,9 @@ main :: proc() {
 	}
 	if keep_usernames {
 		flags |= USERNAMES_FLAG
+	}
+	if ignore_att {
+		flags |= IGNORE_ATT_QUERIES_FLAG
 	}
 
 	write_u8(buffer, flags)
@@ -134,42 +139,36 @@ main :: proc() {
 			msg_flags |= PINNED_FLAG
 		}
 
-		basic_att: [dynamic]string
-		smart_att: [dynamic]SmartAttachment
+		addr := bytes.buffer_length(buffer)
+		basic_att: int
+		smart_att: int
 		for att in msg.attachments {
 			_, host, path, queries, _ := net.split_url(att.url)
 			if host == "cdn.discordapp.com" && strings.has_prefix(path, "/attachments/") {
 				// smart
 				split_path := strings.split(path, "/")
-				ch_id := split_path[2]
-				id := split_path[3]
-				name := split_path[4]
-				exp := queries["ex"]
-				iss := queries["is"]
 				sign := queries["hm"]
-				append(&smart_att, SmartAttachment{ch_id, id, name, exp, iss, sign})
+				write_u64_str(buffer, split_path[2])
+				write_u64_str(buffer, split_path[3])
+				write_str(buffer, split_path[4])
+				if !ignore_att {
+					write_u32_hex(buffer, queries["ex"])
+					write_u32_hex(buffer, queries["is"])
+					write_u64_hex(buffer, sign[:16])
+					write_u64_hex(buffer, sign[16:32])
+					write_u64_hex(buffer, sign[32:48])
+					write_u64_hex(buffer, sign[48:])
+				}
+				smart_att += 1
 			} else {
 				// basic
-				fmt.println("basic att!")
-				append(&basic_att, att.url)
+				basic_att += 1
+				write_str(buffer, att.url)
 			}
 		}
-		write_u8(buffer, u8(len(basic_att)))
-		for url in basic_att {
-			write_str(buffer, url)
-		}
-		write_u8(buffer, u8(len(smart_att)))
-		for att in smart_att {
-			write_u64_str(buffer, att.channel_id)
-			write_u64_str(buffer, att.id)
-			write_str(buffer, att.name)
-			write_u32_hex(buffer, att.expire)
-			write_u32_hex(buffer, att.issue)
-			write_u64_hex(buffer, att.signature[:16])
-			write_u64_hex(buffer, att.signature[16:32])
-			write_u64_hex(buffer, att.signature[32:48])
-			write_u64_hex(buffer, att.signature[48:])
-		}
+		// reverse is important!!
+		write_u8(buffer, u8(smart_att), addr)
+		write_u8(buffer, u8(basic_att), addr)
 
 		write_u8(buffer, msg_flags)
 		write_str(buffer, msg.content)
@@ -220,8 +219,12 @@ write_u16 :: proc(buffer: ^bytes.Buffer, v: u16, addr: Maybe(int) = nil) {
 	}
 }
 
-write_u8 :: proc(buffer: ^bytes.Buffer, v: u8) {
-	bytes.buffer_write(buffer, []u8{v})
+write_u8 :: proc(buffer: ^bytes.Buffer, v: u8, addr: Maybe(int) = nil) {
+	if addr, ok := addr.?; ok {
+		inject_at(&buffer.buf, addr, v)
+	} else {
+		bytes.buffer_write(buffer, []u8{v})
+	}
 }
 
 write_str :: proc(buffer: ^bytes.Buffer, str: string) {
